@@ -18,7 +18,8 @@ session = requests.Session()
 def get_pointer():
     if os.path.exists(POINTER_FILE):
         with open(POINTER_FILE, 'r') as f:
-            return int(f.read().strip())
+            content = f.read().strip()
+            return int(content) if content else 0
     return 0
 
 def save_pointer(val):
@@ -78,19 +79,21 @@ def fetch_user_incremental(user, existing_info):
     return uid, {'address': address, 'vol': current_vol + added_vol, 'last_ts': new_last_ts if new_last_ts else stop_ts}
 
 def main():
+    print("🚀 Fetching registry...")
     registry = requests.get(REGISTRY_URL).json()
     all_data = load_existing_data()
+    
     start_index = get_pointer()
     
-    # If the pointer is beyond the registry, reset to 0 (Start new cycle)
+    # RESET LOGIC: If we are at or past the end, go back to 0
     if start_index >= len(registry):
-        print("🔄 End of registry reached. Restarting from User 0.")
+        print("🔄 End of Registry reached. Resetting pointer to 0 for a new cycle.")
         start_index = 0
 
     end_index = start_index + TEN_K_BATCH
     current_chunk = registry[start_index : end_index]
     
-    print(f"▶️ RUNNING CYCLE: Users {start_index} to {min(end_index, len(registry))}")
+    print(f"▶️ LOOP START: Users {start_index} to {min(end_index, len(registry))}")
     
     temp_results = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
@@ -98,14 +101,14 @@ def main():
         for i, future in enumerate(concurrent.futures.as_completed(futures), 1):
             uid, res = future.result()
             temp_results[uid] = res
-            if i % 100 == 0: print(f"   Progress: {i}/{len(current_chunk)} users processed...")
+            if i % 1000 == 0: print(f"   Progress: {i}/{len(current_chunk)}...")
 
     all_data.update(temp_results)
     save_to_csv(all_data)
     
-    # Update pointer for the NEXT cron job
+    # Save the new pointer for the next immediate run
     save_pointer(end_index)
-    print(f"✅ Saved results. Next run will start at index: {end_index}")
+    print(f"✅ Success. Pointer set to {end_index}. Triggering next run...")
 
 if __name__ == "__main__":
     main()
