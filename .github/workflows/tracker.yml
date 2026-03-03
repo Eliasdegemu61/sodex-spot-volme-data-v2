@@ -2,9 +2,9 @@ name: Sodex Rolling 10k Tracker
 
 on:
   schedule:
-    - cron: '0 0 * * *' # Daily safety restart
-  workflow_dispatch:      # Manual start
-  repository_dispatch:    # The "Loop" trigger
+    - cron: '0 0 * * *' # Safety restart once a day
+  workflow_dispatch:      # Manual trigger
+  repository_dispatch:    # The loop trigger
     types: [start-next-batch]
 
 concurrency:
@@ -31,7 +31,6 @@ jobs:
         run: pip install requests
 
       - name: Run Tracker
-        # We pass the GITHUB_TOKEN so the script can trigger the next run
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
@@ -41,8 +40,16 @@ jobs:
         run: |
           git config --global user.name "SodexBot"
           git config --global user.email "bot@sodex.dev"
-          git pull origin main --rebase
+          
+          # 1. Stage changes first to allow rebase
           git add spot_vol.csv pointer.txt
+          
+          # 2. Pull latest from origin with rebase
+          git pull origin main --rebase
+          
+          # 3. Commit (if there are changes)
           P_VAL=$(cat pointer.txt)
-          git commit -m "Update Batch [Pointer: $P_VAL]" || echo "No changes"
+          git commit -m "Update Batch [Pointer: $P_VAL]" || echo "No changes to commit"
+          
+          # 4. Push back to GitHub
           git push origin main
