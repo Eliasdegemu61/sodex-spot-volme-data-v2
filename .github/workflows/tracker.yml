@@ -2,12 +2,10 @@ name: Sodex Rolling 10k Tracker
 
 on:
   schedule:
-    - cron: '0 0 * * *' # Safety trigger once a day in case the loop breaks
-  workflow_dispatch:      # Allows you to start the first loop manually
-  workflow_run:
-    workflows: ["Sodex Rolling 10k Tracker"]
-    types:
-      - completed
+    - cron: '0 0 * * *' # Daily safety restart
+  workflow_dispatch:      # Manual start
+  repository_dispatch:    # The "Loop" trigger
+    types: [start-next-batch]
 
 concurrency:
   group: sodex-sync
@@ -15,8 +13,6 @@ concurrency:
 
 jobs:
   run-batch:
-    # Only run if the previous run was successful or if triggered manually
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -35,20 +31,18 @@ jobs:
         run: pip install requests
 
       - name: Run Tracker
+        # We pass the GITHUB_TOKEN so the script can trigger the next run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
         run: python -u main.py
 
       - name: Sync and Push Results
         run: |
           git config --global user.name "SodexBot"
           git config --global user.email "bot@sodex.dev"
-          
-          # Pull latest to prevent conflicts
           git pull origin main --rebase
-          
           git add spot_vol.csv pointer.txt
-          
-          # Get pointer value for the commit message
           P_VAL=$(cat pointer.txt)
           git commit -m "Update Batch [Pointer: $P_VAL]" || echo "No changes"
-          
           git push origin main
