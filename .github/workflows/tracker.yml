@@ -4,9 +4,10 @@ on:
   schedule:
     - cron: '0 0 * * *' # Safety restart once a day
   workflow_dispatch:      # Manual trigger
-  repository_dispatch:    # The loop trigger
+  repository_dispatch:    # The "Loop" trigger
     types: [start-next-batch]
 
+# IMPORTANT: This ensures only ONE batch runs at a time.
 concurrency:
   group: sodex-sync
   cancel-in-progress: false 
@@ -20,7 +21,7 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # Required for git pull/rebase to work
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -41,15 +42,20 @@ jobs:
           git config --global user.name "SodexBot"
           git config --global user.email "bot@sodex.dev"
           
-          # 1. Stage changes first to allow rebase
-          git add spot_vol.csv pointer.txt
+          # 1. Stash changes to clean the working directory for pull
+          git stash
           
-          # 2. Pull latest from origin with rebase
+          # 2. Pull latest data from the repo
           git pull origin main --rebase
           
-          # 3. Commit (if there are changes)
+          # 3. Apply your new data back
+          git stash pop || echo "No changes to apply"
+          
+          # 4. Stage, commit and push
+          git add spot_vol.csv pointer.txt
+          
+          # Use a variable to get the pointer for the commit message
           P_VAL=$(cat pointer.txt)
           git commit -m "Update Batch [Pointer: $P_VAL]" || echo "No changes to commit"
           
-          # 4. Push back to GitHub
           git push origin main
